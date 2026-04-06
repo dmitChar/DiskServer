@@ -1,0 +1,24 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "maxConnections": 100,
+        "requestTimeout": 30000
+    },
+    "database": {
+        "path": "CloudDisk.db"
+    },
+    "storage": {
+        "rootPath": "./storage",
+        "maxFileSizeMb": 5120,
+        "allowedExtensions": []
+    },
+    "auth": {
+        "jwtSecret": "DSJFHSAUDIFHASIUHFSAUDFHNSLAIFHLSAFHSAFASIFHNDSAFGUSNACVFDS",
+        "tokenExpiryHours": 24,
+        "refreshTokenExpiryDays": 30
+    },
+    "quota": {
+        "defaultUserQuotaGb": 10
+    }
+}
