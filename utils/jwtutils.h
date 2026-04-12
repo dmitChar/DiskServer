@@ -2,9 +2,10 @@
 
 #include <QString>
 #include <QJsonObject>
-#include <experimental/optional>
+#include <optional>
 
-using namespace std::experimental;
+using std::optional;
+using std::nullopt;
 
 struct TokenPayload
 {

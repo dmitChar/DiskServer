@@ -73,7 +73,7 @@ namespace JwtUtils
         QJsonObject obj = doc.object();
         TokenPayload result;
         result.userId = obj["uid"].toVariant().toLongLong();
-        result.username = obj["usr"].toVariant().toLongLong();
+        result.username = obj["usr"].toVariant().toString();
         result.issuedAt = obj["iat"].toVariant().toLongLong();
         result.expiresAt = obj["exp"].toVariant().toLongLong();
 

@@ -3,12 +3,13 @@
 
 #include <QObject>
 #include <QSqlQuery>
-#include <experimental/optional>
+#include <optional>
 
 #include "utils/user.h"
 #include "utils/filedata.h"
 
-using namespace std::experimental;
+using std::optional;
+using std::nullopt;
 
 class DatabaseManager : public QObject
 {
