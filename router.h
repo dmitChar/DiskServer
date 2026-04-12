@@ -64,7 +64,7 @@ class Router
 {
 public:
     Router();
-    void addRoute(const QString &method, const QString &pathPattern, RouteHandler handler);
+    void addRoute(const QString &method, const QString pathPattern, RouteHandler handler);
     bool dispatch(const HttpRequest &req, HttpResponse &resp);
 private:
     static QPair<QRegularExpression, QStringList> compilePattern(const QString &pattern);

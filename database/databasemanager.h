@@ -3,12 +3,12 @@
 
 #include <QObject>
 #include <QSqlQuery>
-#include <optional>
+#include <experimental/optional>
 
 #include "utils/user.h"
+#include "utils/filedata.h"
 
-using std::optional;
-using std::nullopt;
+using namespace std::experimental;
 
 class DatabaseManager : public QObject
 {
@@ -28,6 +28,14 @@ public:
     bool createSession(qint64 &userId, const QString &jwtToken, qint64 expiresAt);
     bool deleteSession(const QString &jwtToken);
     bool isSessionValid(const QString &jwtToken);
+
+    //--------- Files Data ---------
+    optional<FileData> createFile(const FileData &data);
+    optional<FileData> getFileById(qint64 id);
+    optional<FileData> getFileByPath(qint64 ownerId, const QString &path);
+    QVector<FileData> listDirectory(qint64 ownerId, const QString &dirPath);
+    bool updateUserUsedBytes(qint64 userId, qint64 usedBytes);
+    bool updateFile(const FileData &meta);
 
 private:
     bool createTables();

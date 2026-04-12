@@ -5,10 +5,9 @@
 #include "utils/jwtutils.h"
 #include "database/databasemanager.h"
 
-#include <optional>
+#include <experimental/optional>
 
-using std::optional;
-using std::nullopt;
+using namespace std::experimental;
 
 class AuthMiddleware
 {

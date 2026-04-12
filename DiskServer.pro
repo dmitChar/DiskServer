@@ -35,7 +35,8 @@ HEADERS += \
     handlers/filehandler.h \
     handlers/userhandler.h \
     utils/hashutils.h \
-    utils/fileutils.h
+    utils/fileutils.h \
+    utils/filedata.h
 
 RESOURCES += \
     resource.qrc

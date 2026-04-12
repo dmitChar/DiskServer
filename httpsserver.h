@@ -4,13 +4,11 @@
 #include <QObject>
 #include <QTcpServer>
 #include <QTcpSocket>
-
 #include "database/databasemanager.h"
 #include "middleware/authmiddleware.h"
 #include "handlers/authhandler.h"
 #include "handlers/filehandler.h"
 #include "handlers/userhandler.h"
-
 #include "router.h"
 
 class HttpsServer : public QObject

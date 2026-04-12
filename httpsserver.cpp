@@ -1,17 +1,12 @@
 #include "httpsserver.h"
 
 #include <QUrlQuery>
-// #include "utils/hashutils.h"
 
 
 HttpsServer::HttpsServer(QObject *parent)
     : QObject{parent}, m_tcpServer(new QTcpServer(this))
 {
     connect(m_tcpServer, &QTcpServer::newConnection, this, &HttpsServer::onNewConnection);
-    // QString password = "12345678";
-    // QString salt = HashUtils::generateSalt();
-    // QString hash = HashUtils::hashPassword(password, salt);
-    // m_db->createUser("admin", "admin@gmail.com", hash, salt, 100000 );
 }
 
 bool HttpsServer::start(const QString &host, quint16 port)
@@ -135,6 +130,50 @@ void HttpsServer::setUpRoutes()
         resp.statusCode = data.first;
         resp.setJson();
         resp.body = data.second;
+
+        return resp;
+    });
+
+    //----------- Files -----------
+    // Получение списка файлов в директории path
+    m_router.addRoute("POST", "/api/files", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    {
+        QPair<int, QByteArray> data = m_fileHandler->handleList(r.getHeaderData("authorization"), r.getQueryData("path"));
+        HttpResponse resp;
+        resp.statusCode = data.first;
+        resp.body = data.second;
+        resp.setJson();
+        return resp;
+    });
+
+    // Загрузка файла на сервер по пути ?path=
+    m_router.addRoute("POST", "/api/files/upload", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    {
+        QPair<int, QByteArray> data = m_fileHandler->handleUpload(r.getHeaderData("authorization"), r.getQueryData("path"), r.body, r.getHeaderData("content-type"));
+        HttpResponse resp;
+        resp.statusCode = data.first;
+        resp.body = data.second;
+        resp.setJson();;
+        return resp;
+    });
+
+    // Получение файлов клиентом с сервера
+    m_router.addRoute("GET", "/api/files/download", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    {
+        QString mime, filename;
+        QPair<int, QByteArray> data = m_fileHandler->handleDownload(r.getHeaderData("authorization"), r.getHeaderData("path"), mime, filename);
+
+        HttpResponse resp;
+        resp.statusCode = data.first;
+        resp.body = data.second;
+        if (resp.statusCode == 200)
+        {
+            resp.setContentType(mime);
+            resp.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+            resp.setHeader("Content-Length", QString::number(resp.body.size()));
+        }
+        else
+            resp.setJson();
 
         return resp;
     });

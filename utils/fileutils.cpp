@@ -30,7 +30,8 @@ namespace FileUtils
     {
         qint64 size = 0;
         QDirIterator it(path, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
+        while (it.hasNext())
+        {
             it.next();
             if (it.fileInfo().isFile())
             {

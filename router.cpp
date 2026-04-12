@@ -5,7 +5,7 @@ Router::Router()
 
 }
 
-void Router::addRoute(const QString &method, const QString &pathPattern, RouteHandler handler)
+void Router::addRoute(const QString &method, const QString pathPattern, RouteHandler handler)
 {
     QPair<QRegularExpression, QStringList> result = compilePattern(pathPattern);
     m_routes.append({method.toUpper(), result.first, result.second, std::move(handler)});

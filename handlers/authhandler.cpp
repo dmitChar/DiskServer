@@ -36,7 +36,7 @@ QPair<int, QByteArray> AuthHandler::handleRegister(const QByteArray &body)
         return {Response::HTTP_BAD_REQ, Response::error(400, "username length invalid")};
 
     if (password.length() < 5)
-        return {Response::HTTP_BAD_REQ, Response::error(400, "password is too short, must be at least 8 chars")};
+        return {Response::HTTP_BAD_REQ, Response::error(400, "password is too short, must be at least 5 chars")};
 
     //Unique check
     if (m_db->getUserByUsername(username))
@@ -47,10 +47,9 @@ QPair<int, QByteArray> AuthHandler::handleRegister(const QByteArray &body)
     QString salt = HashUtils::generateSalt();
     QString hash = HashUtils::hashPassword(password, salt);
 
-    // Добавление в бд
     auto user = m_db->createUser(username, email, hash, salt, m_defaultQuota);
     if (!user)
-        return {Response::HTTP_CONFLICT, Response::error(500, "Failed to create user")};
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Failed to create user")};
 
     qDebug() << "[Auth] << User was registered:" << username;
     return {Response::HTTP_CREATED, Response::success(user->toJson(), "User was registered")};
