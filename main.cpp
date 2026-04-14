@@ -32,7 +32,7 @@ struct AppConfig
     quint64 maxFileSizeMb = 5120;
     QString jwtSecret = "biba";
     int tokenExpiryHours = 1;
-    qint64 defaultQuotaGb = 10;
+    qint64 defaultQuotaGb = 15;
 };
 
 AppConfig loadConfig(const QString &path)

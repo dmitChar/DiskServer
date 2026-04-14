@@ -26,7 +26,7 @@ public:
     qint64 calcUsedBytes(const qint64 &id);
 
     //---------Sessions---------
-    bool createSession(qint64 &userId, const QString &jwtToken, qint64 expiresAt);
+    void createSession(qint64 userId, const QString &jwtToken, qint64 expiresAt);
     bool deleteSession(const QString &jwtToken);
     bool isSessionValid(const QString &jwtToken);
 

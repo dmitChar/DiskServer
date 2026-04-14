@@ -96,16 +96,15 @@ bool DatabaseManager::createTables()
 
     //Таблица сессий
     if (!query.exec(R"(
-        CREATE TABLE IF NOT EXISTS sessions
-        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        token TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS sessions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token      TEXT    NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            created_at TEXT    NOT NULL
         )
-    )"))
-    {
-        qCritical() << "[DB] sessions error:" <<  query.lastError().text();
+    )")) {
+        qCritical() << "[DB] sessions table:" << query.lastError().text();
         return false;
     }
 
@@ -122,18 +121,19 @@ void DatabaseManager::close()
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
-bool DatabaseManager::createSession(qint64 &userId, const QString &jwtToken, qint64 expiresAt)
+void DatabaseManager::createSession(qint64 userId, const QString &jwtToken, qint64 expiresAt)
 {
     QSqlQuery q(m_db);
-    q.prepare(R"(INSERT INTO sessions (user_id, token, expires_at, created_at)
-                VALUES (:uid, :t, :exp, :ca)
-                )");
-
+    q.prepare(R"(
+        INSERT INTO sessions (user_id, token, expires_at, created_at)
+        VALUES (:uid, :t, :exp, :ca)
+    )");
     q.bindValue(":uid", userId);
-    q.bindValue(":t", jwtToken);
+    q.bindValue(":t",   jwtToken);
     q.bindValue(":exp", expiresAt);
-    q.bindValue(":ca", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    return q.exec();
+    q.bindValue(":ca",  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    if (!q.exec())
+        qDebug() << "[DB] createSession error:" << q.lastError().text();
 }
 
 bool DatabaseManager::deleteSession(const QString &jwtToken)

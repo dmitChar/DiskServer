@@ -30,7 +30,8 @@ void FileHandler::refreshUsedBytes(qint64 userId)
 QPair<int, QByteArray> FileHandler::handleList(const QString &authHeader, const QString &path)
 {
     auto token = m_auth->authencticate(authHeader);
-    if (!token) return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
+    if (!token)
+        return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
 
     QString normPath = "/" + FileUtils::sanitizePath(path.isEmpty() ? "/" : path);
 

@@ -19,6 +19,6 @@
         "refreshTokenExpiryDays": 30
     },
     "quota": {
-        "defaultUserQuotaGb": 10
+        "defaultUserQuotaGb": 15
     }
 }

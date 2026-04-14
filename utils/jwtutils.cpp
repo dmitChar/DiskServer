@@ -39,7 +39,7 @@ namespace JwtUtils
         payloadObj["usr"] = payload.username;
         payloadObj["iat"] = payload.issuedAt;
         payloadObj["exp"] = payload.expiresAt;
-        QByteArray body = base64UrlEncode(QJsonDocument(headerObj).toJson(QJsonDocument::Compact));
+        QByteArray body = base64UrlEncode(QJsonDocument(payloadObj).toJson(QJsonDocument::Compact)) ;
 
         //Signature
         QByteArray signingInput = header + '.' + body;
@@ -67,13 +67,13 @@ namespace JwtUtils
         //Decode payload
         QByteArray payloadJson = base64UrlDecode(body);
         QJsonDocument doc = QJsonDocument::fromJson(payloadJson);
-        if (doc.isNull() || doc.isObject())
-            return nullopt;
+//        if (doc.isNull() || doc.isObject())
+//            return nullopt;
 
         QJsonObject obj = doc.object();
         TokenPayload result;
         result.userId = obj["uid"].toVariant().toLongLong();
-        result.username = obj["usr"].toVariant().toString();
+        result.username = obj["usr"].toString();
         result.issuedAt = obj["iat"].toVariant().toLongLong();
         result.expiresAt = obj["exp"].toVariant().toLongLong();
 
