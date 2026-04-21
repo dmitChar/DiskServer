@@ -341,6 +341,11 @@ bool DatabaseManager::updateFile(const FileData &meta)
     return q.exec();
 }
 
+bool DatabaseManager::deleteFileById(const qint64 &fileId)
+{
+
+}
+
 // Получение файла по его пути
 optional<FileData> DatabaseManager::getFileByPath(qint64 ownerId, const QString &path)
 {
@@ -371,10 +376,10 @@ QVector<FileData> DatabaseManager::listDirectory(qint64 ownerId, const QString &
 
     QString likePrefix = prefix.replace("%", "\%").replace("_", "\_") + "_%";
 
-    QString likeDeeper = likePrefix.chopped(2) + "%/";
+    QString notLike = likePrefix + "/_%";
     q.bindValue(":oid", ownerId);
     q.bindValue(":prefix", likePrefix);
-    q.bindValue(":deeper", likeDeeper);
+    q.bindValue(":deeper", notLike);
 
     QVector<FileData> result;
     if (q.exec())
@@ -383,6 +388,32 @@ QVector<FileData> DatabaseManager::listDirectory(qint64 ownerId, const QString &
             result.append(fileFromQuery(q));
     }
     return result;
+}
+
+optional<qint64> DatabaseManager::getFileIdByPath(const QString &path)
+{
+    QSqlQuery q(m_db);
+    q.prepare("SELECT id FROM files WHERE path = :path");
+    q.bindValue(":path", path);
+
+    if (!q.exec() || !q.next())
+    {
+        return nullopt;
+    }
+    return q.value("id").toULongLong();
+}
+
+optional<qint64> DatabaseManager::getOwnerIdById(const qint64 fileId)
+{
+    QSqlQuery q(m_db);
+    q.prepare("SELECT owner_id FROM files WHERE id = :id");
+    q.bindValue(":id", fileId);
+
+    if (!q.exec() || !q.next())
+    {
+        return nullopt;
+    }
+    return q.value("owner_id").toLongLong();
 }
 
 bool DatabaseManager::updateUserUsedBytes(qint64 userId, qint64 usedBytes)

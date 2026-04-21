@@ -94,6 +94,38 @@ QPair<int, QByteArray> FileHandler::handleMkDir(const QString &authHeader, const
     return {Response::HTTP_CREATED, Response::success(created->toJson(), "Directory created")};
 }
 
+//--------- Удаление файлов ----------------
+
+QPair<int, QByteArray> FileHandler::handleDelete(const QString authHeader, const QByteArray &body)
+{
+    auto token = m_auth->authencticate(authHeader);
+    if (!token) return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
+
+    auto user = m_db->getUserById(token->userId);
+    if (!user) return { Response::HTTP_NOT_FOUND, Response::error(404, "User Not found") };
+
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(body, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return {Response::HTTP_BAD_REQ, Response::error(400, "Invalid JSON")};
+
+    QJsonObject obj = doc.object();
+    QString filePath = obj["path"].toString().trimmed();
+
+    auto fileId = m_db->getFileIdByPath(filePath);
+    if (!fileId)
+        return {Response::HTTP_NOT_FOUND, Response::error(404, "File Not Found")};
+
+    auto ownerId = m_db->getOwnerIdById(fileId.value());
+    if (!ownerId)
+        return {Response::HTTP_NOT_FOUND, Response::error(404, "Owner Not Found")};
+
+    if (ownerId != user.value().id)
+        return { Response::HTTP_FORBIDDEN, Response::error(403, "You are not an owner of this file")};
+
+
+}
+
 //--------- Загрузка файлов на сервер ----------------
 
 QPair<int, QByteArray> FileHandler::handleUpload(const QString &authHeader, const QString &targetDir, const QByteArray &body, const QString &contentType)
@@ -145,11 +177,12 @@ QPair<int, QByteArray> FileHandler::handleUpload(const QString &authHeader, cons
         QString physPath = diskPath(token->userId, FileUtils::sanitizePath(virtualPath.mid(1)));
 
         // Write to disk
-        FileUtils::ensureDirectoryExists(QFileInfo(physPath).absolutePath());
+        QString absolutePath = QFileInfo(physPath).absolutePath();
+        FileUtils::ensureDirectoryExists(absolutePath);
         QFile f(physPath);
         if (!f.open(QIODevice::WriteOnly))
         {
-            qDebug() << "[File] ERORR!!! CANNOT WRITE:" << physPath;
+            qDebug() << "[File] Cannot write:" << physPath;
             continue;
         }
         f.write(mf.data);

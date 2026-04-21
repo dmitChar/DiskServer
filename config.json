@@ -10,7 +10,7 @@
     },
     "storage": {
         "rootPath": "./storage",
-        "maxFileSizeMb": 5120,
+        "maxFileSizeMb": 5,
         "allowedExtensions": []
     },
     "auth": {

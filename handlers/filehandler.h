@@ -36,7 +36,10 @@ public:
     // Sets outMime and outFileName
     QPair<int, QByteArray> handleDownload(const QString &authHeader, const QString &filePath, QString &outMime, QString &outFileName);
 
+    // POST /api/files/mkdir
     QPair<int, QByteArray> handleMkDir(const QString &authHeader, const QByteArray &body);
+
+    QPair<int, QByteArray> handleDelete(const QString authHeader, const QByteArray &body);
 
 private:
     QList<MultipartFile> parseMultipart(const QByteArray &body, const QString &boundary);

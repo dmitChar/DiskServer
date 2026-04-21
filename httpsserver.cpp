@@ -187,6 +187,11 @@ void HttpsServer::setUpRoutes()
         resp.setJson();;
         return resp;
     });
+
+//    m_router.addRoute("DELETE", "/api/files/delete", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+//    {
+//        QPair<int, QByteArray> data = m_fileHandler->handleDelete(r.getHeaderData("authorization"), r.body);
+//    });
 }
 
 //-------- Request parsing -------------------------------------------
