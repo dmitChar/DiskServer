@@ -121,7 +121,7 @@ void DatabaseManager::close()
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
-void DatabaseManager::createSession(qint64 userId, const QString &jwtToken, qint64 expiresAt)
+bool DatabaseManager::createSession(qint64 userId, const QString &token, qint64 expiresAt)
 {
     QSqlQuery q(m_db);
     q.prepare(R"(
@@ -129,11 +129,10 @@ void DatabaseManager::createSession(qint64 userId, const QString &jwtToken, qint
         VALUES (:uid, :t, :exp, :ca)
     )");
     q.bindValue(":uid", userId);
-    q.bindValue(":t",   jwtToken);
+    q.bindValue(":t",   token);
     q.bindValue(":exp", expiresAt);
     q.bindValue(":ca",  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    if (!q.exec())
-        qDebug() << "[DB] createSession error:" << q.lastError().text();
+    return q.exec();
 }
 
 bool DatabaseManager::deleteSession(const QString &jwtToken)
@@ -213,8 +212,8 @@ qint64 DatabaseManager::calcUsedBytes(const qint64 &id)
 }
 
 optional<User> DatabaseManager::createUser(const QString &username, const QString &email,
-                                                const QString &hash, const QString &salt,
-                                                qint64 defaultQuota)
+                                           const QString &hash, const QString &salt,
+                                           qint64 defaultQuota)
 {
     QSqlQuery query(m_db);
     query.prepare(R"(INSERT INTO users (username, email, password_hash, salt, quota_bytes, created_at, updated_at)
@@ -252,7 +251,7 @@ static FileData fileFromQuery(const QSqlQuery &q) {
     f.path         = q.value("path").toString();
     f.serverPath   = q.value("storage_path").toString();
     f.type         = q.value("type").toString() == "directory"
-                       ? FileType::Directory : FileType::File;
+                 ? FileType::Directory : FileType::File;
     f.sizeBytes    = q.value("size_bytes").toLongLong();
     f.mimeType     = q.value("mime_type").toString();
     f.checkSum     = q.value("checksum").toString();
@@ -317,33 +316,17 @@ optional<FileData> DatabaseManager::getFileById(qint64 id)
     return nullopt;
 }
 
-bool DatabaseManager::updateFile(const FileData &meta)
-{
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        UPDATE files SET
-            name=:n, path=:p, storage_path=:sp, size_bytes=:sb,
-            mime_type=:mt, checksum=:cs, is_shared=:isd,
-            share_token=:st, updated_at=:ua
-        WHERE id=:id
-    )");
-    q.bindValue(":n",   meta.name);
-    q.bindValue(":p",   meta.path);
-    q.bindValue(":sp",  meta.serverPath);
-    q.bindValue(":sb",  meta.sizeBytes);
-    q.bindValue(":mt",  meta.mimeType);
-    q.bindValue(":cs",  meta.checkSum);
-    q.bindValue(":isd", meta.isShared ? 1 : 0);
-    q.bindValue(":st",  meta.shareToken.isEmpty() ? QVariant() : meta.shareToken);
-    q.bindValue(":ua",  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    q.bindValue(":id",  meta.id);
-
-    return q.exec();
-}
-
 bool DatabaseManager::deleteFileById(const qint64 &fileId)
 {
-
+    QSqlQuery q(m_db);
+    q.prepare("DELETE FROM files WHERE id = :id");
+    q.bindValue(":id", fileId);
+    if (!q.exec())
+    {
+        qDebug() << "[DB] deleteFileById Error:" << q.lastError().text();
+        return false;
+    }
+    return true;
 }
 
 // Получение файла по его пути
@@ -390,17 +373,90 @@ QVector<FileData> DatabaseManager::listDirectory(qint64 ownerId, const QString &
     return result;
 }
 
-optional<qint64> DatabaseManager::getFileIdByPath(const QString &path)
+bool DatabaseManager::deleteDirCascade(const QString &pathDir)
 {
     QSqlQuery q(m_db);
-    q.prepare("SELECT id FROM files WHERE path = :path");
+    q.prepare("DELETE FROM files WHERE storage_path LIKE :prefix");
+    QString prefix = pathDir;
+    prefix = prefix.replace("%", "\%").replace("_", "\_");
+    prefix = "%" + prefix + "%";
+    q.bindValue(":prefix", prefix);
+
+    if (!q.exec())
+        return false;
+    return true;
+}
+
+bool DatabaseManager::updateDirCascade(const QString &oldName, const QString &newName)
+{
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+                SELECT * FROM files WHERE path LIKE :prefix
+                AND path NOT LIKE :notLike
+              )");
+
+    QString prefix = oldName;
+    QString sqlPrefix = prefix.replace("%", "\%").replace("_", "\_");
+    QString notLikePrefix = sqlPrefix;
+    notLikePrefix = '%' + notLikePrefix;
+    sqlPrefix = '%' + sqlPrefix + '%';
+
+    q.bindValue(":prefix", sqlPrefix);
+    q.bindValue(":notLike", notLikePrefix);
+
+    if (!q.exec())
+        return false;
+
+    // Получение файлов для смены пути
+    while (q.next())
+    {
+        FileData file = fileFromQuery(q);
+
+        QString newServerPath = file.serverPath.replace(oldName, newName);
+        QString newUserPath = file.path.replace(oldName, newName);
+
+        file.serverPath = newServerPath;
+        file.path = newUserPath;
+
+        updateFile(file);
+    }
+    return true;
+}
+
+bool DatabaseManager::updateFile(const FileData &file)
+{
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        UPDATE files SET
+            name=:n, path=:p, storage_path=:sp, size_bytes=:sb,
+            mime_type=:mt, checksum=:cs, is_shared=:isd,
+            share_token=:st, updated_at=:ua
+        WHERE id=:id
+    )");
+    q.bindValue(":n",   file.name);
+    q.bindValue(":p",   file.path);
+    q.bindValue(":sp",  file.serverPath);
+    q.bindValue(":sb",  file.sizeBytes);
+    q.bindValue(":mt",  file.mimeType);
+    q.bindValue(":cs",  file.checkSum);
+    q.bindValue(":isd", file.isShared ? 1 : 0);
+    q.bindValue(":st",  file.shareToken.isEmpty() ? QVariant() : file.shareToken);
+    q.bindValue(":ua",  QDateTime::currentDateTime().toString(Qt::ISODate));
+    q.bindValue(":id",  file.id);
+    return q.exec();
+}
+
+optional<FileData> DatabaseManager::getFileByPath(const QString &path)
+{
+    QSqlQuery q(m_db);
+    q.prepare("SELECT * FROM files WHERE path = :path");
     q.bindValue(":path", path);
 
     if (!q.exec() || !q.next())
     {
         return nullopt;
     }
-    return q.value("id").toULongLong();
+    return fileFromQuery(q);
 }
 
 optional<qint64> DatabaseManager::getOwnerIdById(const qint64 fileId)

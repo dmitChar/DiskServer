@@ -158,10 +158,11 @@ void HttpsServer::setUpRoutes()
     });
 
     // Получение файлов клиентом с сервера
-    m_router.addRoute("GET", "/api/files/download", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    m_router.addRoute("GET", "/api/files/:id/download", [this] (const HttpRequest &r, const QMap<QString, QString>&p)
     {
         QString mime, filename;
-        QPair<int, QByteArray> data = m_fileHandler->handleDownload(r.getHeaderData("authorization"), r.getHeaderData("path"), mime, filename);
+        QMap<QString, QString> extraHeaders;
+        QPair<int, QByteArray> data = m_fileHandler->handleDownload(r.getHeaderData("authorization"), p["id"].toLongLong(), r.getHeaderData("range"), mime, filename, extraHeaders);
 
         HttpResponse resp;
         resp.statusCode = data.first;

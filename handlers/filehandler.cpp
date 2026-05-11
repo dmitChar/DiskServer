@@ -2,6 +2,7 @@
 #include <QVector>
 #include <QFileInfo>
 #include <QFile>
+#include <QDir>
 #include <QCryptographicHash>
 #include <QDebug>
 
@@ -16,6 +17,79 @@ FileHandler::FileHandler(DatabaseManager *db, AuthMiddleware *auth, const QStrin
 QString FileHandler::diskPath(qint64 userId, const QString &relativePath) const
 {
     return m_storageRoot + "/" + QString::number(userId) + "/" + relativePath;
+}
+
+
+// ─── Внутренний хелпер: выполнить чтение файла с учётом Range ────────────────
+//
+// Параметры:
+//   meta        — метаданные файла из БД
+//   rangeHeader — значение заголовка Range (может быть пустым)
+//   outMime     — [out] MIME-тип для Content-Type
+//   outFilename — [out] имя файла для Content-Disposition
+//   outHeaders  — [out] дополнительные заголовки (Content-Range, Accept-Ranges)
+//
+// Возвращает {httpStatusCode, body}.
+// body — либо весь файл (200), либо запрошенный фрагмент (206).
+//
+static QPair<int, QByteArray> serveFile(const FileData &fileData, const QString &rangeHeader, QString &outMime,
+                                                     QString &outFilename, QMap<QString, QString> outHeaders)
+{
+    outMime = fileData.mimeType;
+    outFilename = fileData.name;
+
+    outHeaders["Accept-Ranger"] = "bytes";
+    QFile file(fileData.serverPath);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Failed to open file for reading")};
+    }
+
+    const qint64 fileSize = file.size();
+
+    // Разбор Ranges заголовка
+    auto rangeOpt = Response::parseRange(rangeHeader);
+
+    if (!rangeOpt.has_value())
+    {
+        // Нет Range заголовка - полный файл
+        return {Response::HTTP_OK, file.readAll()};
+    }
+
+    Response::RangeRequest range = rangeOpt.value();
+    if (!range.resolve(fileSize))
+    {
+        // Диапазон за пределами файла → 416 Range Not Satisfiable
+        outHeaders["Content-Range"] = QString("bytes */%1").arg(fileSize);
+        return {Response::HTTP_RANGE_NOT_SATISFIABLE, Response::error(416, "Range Not Satisfiable")};
+    }
+
+    // Чтение запрошенного фрагмента
+    if (!file.seek(range.first))
+    {
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Seek failed")};
+    }
+
+    QByteArray chunk = file.read(range.length());
+    if (chunk.size() != range.length())
+    {
+        // Файл мог усечься между открытием и чтением
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Read returned fewer bytes than expected")};
+    }
+
+    // ── Заголовки для 206 Partial Content ─────────────────────────────────────
+    // Content-Range: bytes <first>-<last>/<total>
+    outHeaders["Content-Range"]  = range.contentRangeHeader(fileSize);
+    // Content-Length: размер именно этого фрагмента
+    outHeaders["Content-Length"] = QString::number(chunk.size());
+
+    qDebug() << "[Range] Serving bytes"
+             << range.first << "-" << range.last
+             << "of" << fileSize
+             << "for" << fileData.name;
+
+    return {Response::HTTP_PARTIAL_CONTENT, chunk};
+
 }
 
 // Обновление квоты пользователя в бд
@@ -79,8 +153,6 @@ QPair<int, QByteArray> FileHandler::handleMkDir(const QString &authHeader, const
     FileData data;
     data.ownerId = token->userId;
     data.name = QFileInfo(normPath).fileName();
-    data.mimeType = "empty";
-    data.shareToken = "empty";
     data.path = normPath;
     data.serverPath = serverPath;
     data.type = FileType::Directory;
@@ -96,7 +168,7 @@ QPair<int, QByteArray> FileHandler::handleMkDir(const QString &authHeader, const
 
 //--------- Удаление файлов ----------------
 
-QPair<int, QByteArray> FileHandler::handleDelete(const QString authHeader, const QByteArray &body)
+QPair<int, QByteArray> FileHandler::handleDelete(const QString &authHeader,  QString filePath)
 {
     auto token = m_auth->authencticate(authHeader);
     if (!token) return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
@@ -104,27 +176,108 @@ QPair<int, QByteArray> FileHandler::handleDelete(const QString authHeader, const
     auto user = m_db->getUserById(token->userId);
     if (!user) return { Response::HTTP_NOT_FOUND, Response::error(404, "User Not found") };
 
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(body, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject())
-        return {Response::HTTP_BAD_REQ, Response::error(400, "Invalid JSON")};
-
-    QJsonObject obj = doc.object();
-    QString filePath = obj["path"].toString().trimmed();
-
-    auto fileId = m_db->getFileIdByPath(filePath);
-    if (!fileId)
+    auto file = m_db->getFileByPath(filePath);
+    if (!file)
         return {Response::HTTP_NOT_FOUND, Response::error(404, "File Not Found")};
 
-    auto ownerId = m_db->getOwnerIdById(fileId.value());
+    auto ownerId = m_db->getOwnerIdById(file.value().id);
     if (!ownerId)
         return {Response::HTTP_NOT_FOUND, Response::error(404, "Owner Not Found")};
 
     if (ownerId != user.value().id)
         return { Response::HTTP_FORBIDDEN, Response::error(403, "You are not an owner of this file")};
 
+    filePath = FileUtils::sanitizePath(filePath);
+    QString dPath = diskPath(ownerId.value(), filePath);
+    bool success = false;
+    if (file.value().isDirectory())
+    {
+        if (QDir(dPath).removeRecursively())
+            success = m_db->deleteDirCascade(dPath);
+    }
+    else
+    {
+        if (QFile::remove(dPath))
+            success = m_db->deleteFileById(file.value().id) && QFile::remove(dPath);
+    }
 
+    if (success)
+    {
+        qDebug() << "[FILEHANDLER] Был удален файл" << dPath;
+        return {Response::HTTP_OK, Response::success({}, "File was deleted")};
+    }
+    else return {Response::HTTP_SERVER_ERR, Response::error(500, "File was not deleted")};
 }
+
+QPair<int, QByteArray> FileHandler::handleRenameFile(const QString &authHeader, const QString &filePath, const QByteArray &body)
+{
+    auto token = m_auth->authencticate(authHeader);
+    if (!token)
+        return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
+
+    auto user = m_db->getUserById(token->userId);
+    if (!user) return { Response::HTTP_NOT_FOUND, Response::error(404, "User Not found") };
+
+    auto oldFile = m_db->getFileByPath(filePath);
+    if (!oldFile)
+        return {Response::HTTP_NOT_FOUND, Response::error(404, "File Not Found")};
+    FileData newFile = oldFile.value();
+
+    auto ownerId = m_db->getOwnerIdById(newFile.id);
+    if (!ownerId)
+        return {Response::HTTP_NOT_FOUND, Response::error(404, "Owner Not Found")};
+
+    if (ownerId != user.value().id)
+        return { Response::HTTP_FORBIDDEN, Response::error(403, "You are not an owner of this file")};
+
+    //--------------------
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(body, &err);
+
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return {Response::HTTP_BAD_REQ, Response::error(400, "INVALID JSON")};
+
+    QJsonObject obj = doc.object();
+    QString newName = obj["newName"].toString().trimmed();
+    if (newName.isEmpty())
+        return {Response::HTTP_BAD_REQ, Response::error(400, "New name is empty")};
+
+    QString dPath = diskPath(ownerId.value(), FileUtils::sanitizePath(filePath));
+    bool success = false;
+
+
+    QString temp = newFile.path;
+    temp.chop(oldFile.value().name.size());
+
+    QString newUserPath = QString(temp + newName);
+    QString oldName = QFileInfo(dPath).fileName();
+
+    temp = dPath;
+    temp.chop(newFile.name.size());
+    QString newServerPath = QString(temp + newName);
+
+    newFile.name = newName;
+    newFile.path = newUserPath;
+    newFile.serverPath = newServerPath;
+
+
+    // Обновление в бд и в системе
+    if (m_db->updateFile(newFile))
+        success = QFile::rename(dPath, newServerPath);
+    else
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Error in changing file's name")};
+
+    if (success)
+    {
+        if (newFile.isDirectory())
+            m_db->updateDirCascade(oldName, newName);
+        return {Response::HTTP_OK, Response::success({}, "Rename successful")};
+    }
+    else
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Error in changing file's name")};
+}
+
+
 
 //--------- Загрузка файлов на сервер ----------------
 
@@ -225,33 +378,32 @@ QPair<int, QByteArray> FileHandler::handleUpload(const QString &authHeader, cons
     return {Response::HTTP_CREATED, Response::successArray(uploaded, "Upload successful")};
 }
 
-//--------- Получение файлов с сервера ----------------
+//--------- Загрузка файлов с сервера ----------------
 
-QPair<int, QByteArray> FileHandler::handleDownload(const QString &authHeader, const QString &filePath, QString &outMime, QString &outFileName)
+QPair<int, QByteArray>FileHandler::handleDownload(const QString &authHeader, qint64 fileId, const QString &rangeHeader,
+                                                  QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders)
 {
     auto token = m_auth->authencticate(authHeader);
     if (!token)
         return { Response::HTTP_UNAUTH, Response::error(401, "Unauthorized") };
 
-    QString normPath = "/" + FileUtils::sanitizePath(filePath);
-    auto file = m_db->getFileByPath(token->userId, normPath);
+    if (fileId <= 0)
+        return { Response::HTTP_BAD_REQ, Response::error(400, "Invalid Id") };
+
+    auto file = m_db->getFileById(fileId);
     if (!file)
         return {Response::HTTP_NOT_FOUND, Response::error(404, "File not found")};
+
     if (file->isDirectory())
         return { Response::HTTP_BAD_REQ, Response::error(400, "Cannot download a directory")};
 
-    QFile f(file->serverPath);
-    if (!f.open(QIODevice::ReadOnly))
-        return { Response::HTTP_SERVER_ERR, Response::error(500, "Failed to read file")};
+    if (rangeHeader.isEmpty())
+    {
+        file.value().lastAccessed = QDateTime::currentDateTime();
+        m_db->updateFile(file.value());
+    }
 
-    outMime = file->mimeType;
-    outFileName = file->name;
-
-    // Update last accessed
-    file->lastAccessed = QDateTime::currentDateTimeUtc();
-    m_db->updateFile(*file);
-
-    return {Response::HTTP_OK, f.readAll()};
+    return serveFile(file.value(), rangeHeader, outMime, outFileName, outHeaders);
 }
 
 

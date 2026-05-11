@@ -8,7 +8,7 @@
 #include "utils/user.h"
 #include "utils/filedata.h"
 
-using  std::optional;
+using std::optional;
 using std::nullopt;
 
 class DatabaseManager : public QObject
@@ -27,7 +27,7 @@ public:
 
 
     //---------Sessions---------
-    void createSession(qint64 userId, const QString &jwtToken, qint64 expiresAt);
+    bool createSession(qint64 userId, const QString &jwtToken, qint64 expiresAt);
     bool deleteSession(const QString &jwtToken);
     bool isSessionValid(const QString &jwtToken);
 
@@ -36,11 +36,13 @@ public:
     optional<FileData> getFileById(qint64 id);
     optional<FileData> getFileByPath(qint64 ownerId, const QString &path);
     QVector<FileData> listDirectory(qint64 ownerId, const QString &dirPath);
-    optional<qint64> getFileIdByPath(const QString &path);
+    optional<FileData> getFileByPath(const QString &path);
     optional<qint64> getOwnerIdById(const qint64 fileId);
     bool updateUserUsedBytes(qint64 userId, qint64 usedBytes);
     bool updateFile(const FileData &meta);
     bool deleteFileById(const qint64 &fileId);
+    bool deleteDirCascade(const QString &pathDir);
+    bool updateDirCascade(const QString &oldName, const QString &newName);
 
 private:
     bool createTables();
