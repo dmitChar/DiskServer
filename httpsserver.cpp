@@ -1,6 +1,7 @@
 #include "httpsserver.h"
 
 #include <QUrlQuery>
+#include <QTimer>
 
 
 HttpsServer::HttpsServer(QObject *parent)
@@ -167,7 +168,7 @@ void HttpsServer::setUpRoutes()
         HttpResponse resp;
         resp.statusCode = data.first;
         resp.body = data.second;
-        if (resp.statusCode == 200)
+        if (resp.statusCode == 200 || resp.statusCode == 206)
         {
             resp.setContentType(mime);
             resp.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
@@ -175,6 +176,8 @@ void HttpsServer::setUpRoutes()
         }
         else
             resp.setJson();
+
+        qDebug() << "Отправлено на скачивание: " << data.second.size() << "байт";
 
         return resp;
     });
@@ -189,10 +192,15 @@ void HttpsServer::setUpRoutes()
         return resp;
     });
 
-//    m_router.addRoute("DELETE", "/api/files/delete", [this] (const HttpRequest &r, const QMap<QString, QString>&)
-//    {
-//        QPair<int, QByteArray> data = m_fileHandler->handleDelete(r.getHeaderData("authorization"), r.body);
-//    });
+    m_router.addRoute("DELETE", "/api/files/:id", [this] (const HttpRequest &r, const QMap<QString, QString> p)
+    {
+      QPair<int, QByteArray> data = m_fileHandler->handleDelete(r.getHeaderData("authorization"), p["id"].toLongLong());
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.body = data.second;
+      resp.setJson();
+      return resp;
+    });
 }
 
 //-------- Request parsing -------------------------------------------
@@ -292,6 +300,7 @@ void HttpsServer::sendResponse(QTcpSocket *socket, const HttpResponse &resp)
     raw += "Server: YaDisk-Backend/1.0\r\n";
     raw += "Content-Length: " + QString::number(resp.body.size()).toLatin1() + "\r\n";
     raw += "Connection: close\r\n";
+    //raw += "Connection: keep-alive\r\n";
 
     for (auto it = resp.headers.constBegin(); it != resp.headers.constEnd(); ++it)
     {
@@ -300,9 +309,16 @@ void HttpsServer::sendResponse(QTcpSocket *socket, const HttpResponse &resp)
     raw += "\r\n";
     raw += resp.body;
 
+    qint64 written =socket->write(raw);
+
+    qDebug() << "[HttpServer] written:" << written << raw.size();
     socket->write(raw);
     socket->flush();
-    socket->disconnectFromHost();
+
+    QTimer::singleShot(
+        1000,
+        socket,
+        &QTcpSocket::disconnectFromHost);
 }
 
 QString HttpsServer::statusText(int code)

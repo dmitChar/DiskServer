@@ -47,7 +47,7 @@ namespace FileUtils
 
             {"jpg", "image/jpeg"}, {"jpeg", "image/jpeg"}, {"png", "image/png"},
             {"gif", "image/gif"},  {"bmp", "image/bmp"},   {"webp", "image/webp"},
-            {"svg", "image/svg+xml"}, {"cpp", "text/x-c"}, {".h", "text/plain"},
+            {"svg", "image/svg+xml"}, {"cpp", "text/x-c"}, {"h", "text/plain"},
             {"pdf", "application/pdf"},
             {"txt", "text/plain"}, {"md", "text/markdown"}, {"csv", "text/csv"},
             {"html", "text/html"}, {"css", "text/css"},     {"js", "application/javascript"},

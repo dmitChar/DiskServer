@@ -33,7 +33,7 @@ QString FileHandler::diskPath(qint64 userId, const QString &relativePath) const
 // body — либо весь файл (200), либо запрошенный фрагмент (206).
 //
 static QPair<int, QByteArray> serveFile(const FileData &fileData, const QString &rangeHeader, QString &outMime,
-                                                     QString &outFilename, QMap<QString, QString> outHeaders)
+                                        QString &outFilename, QMap<QString, QString> outHeaders)
 {
     outMime = fileData.mimeType;
     outFilename = fileData.name;
@@ -52,6 +52,9 @@ static QPair<int, QByteArray> serveFile(const FileData &fileData, const QString 
 
     if (!rangeOpt.has_value())
     {
+        // if (fileData.mimeType.startsWith("video/"))
+        //     return {Response::HTTP_PARTIAL_CONTENT, {}};
+
         // Нет Range заголовка - полный файл
         return {Response::HTTP_OK, file.readAll()};
     }
@@ -168,15 +171,15 @@ QPair<int, QByteArray> FileHandler::handleMkDir(const QString &authHeader, const
 
 //--------- Удаление файлов ----------------
 
-QPair<int, QByteArray> FileHandler::handleDelete(const QString &authHeader,  QString filePath)
+QPair<int, QByteArray> FileHandler::handleDelete(const QString &authHeader,  qint64 fileId)
 {
     auto token = m_auth->authencticate(authHeader);
-    if (!token) return {Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
+    if (!token) return { Response::HTTP_UNAUTH, Response::error(401, "Unauthorized")};
 
     auto user = m_db->getUserById(token->userId);
     if (!user) return { Response::HTTP_NOT_FOUND, Response::error(404, "User Not found") };
 
-    auto file = m_db->getFileByPath(filePath);
+    auto file = m_db->getFileById(fileId);
     if (!file)
         return {Response::HTTP_NOT_FOUND, Response::error(404, "File Not Found")};
 
@@ -187,8 +190,8 @@ QPair<int, QByteArray> FileHandler::handleDelete(const QString &authHeader,  QSt
     if (ownerId != user.value().id)
         return { Response::HTTP_FORBIDDEN, Response::error(403, "You are not an owner of this file")};
 
-    filePath = FileUtils::sanitizePath(filePath);
-    QString dPath = diskPath(ownerId.value(), filePath);
+    //QString filePath = FileUtils::sanitizePath(file.value().serverPath);
+    const QString dPath = file.value().serverPath;
     bool success = false;
     if (file.value().isDirectory())
     {
@@ -198,7 +201,7 @@ QPair<int, QByteArray> FileHandler::handleDelete(const QString &authHeader,  QSt
     else
     {
         if (QFile::remove(dPath))
-            success = m_db->deleteFileById(file.value().id) && QFile::remove(dPath);
+            success = m_db->deleteFileById(file.value().id);
     }
 
     if (success)
@@ -383,9 +386,9 @@ QPair<int, QByteArray> FileHandler::handleUpload(const QString &authHeader, cons
 QPair<int, QByteArray>FileHandler::handleDownload(const QString &authHeader, qint64 fileId, const QString &rangeHeader,
                                                   QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders)
 {
-    auto token = m_auth->authencticate(authHeader);
-    if (!token)
-        return { Response::HTTP_UNAUTH, Response::error(401, "Unauthorized") };
+    // auto token = m_auth->authencticate(authHeader);
+    // if (!token)
+    //     return { Response::HTTP_UNAUTH, Response::error(401, "Unauthorized") };
 
     if (fileId <= 0)
         return { Response::HTTP_BAD_REQ, Response::error(400, "Invalid Id") };

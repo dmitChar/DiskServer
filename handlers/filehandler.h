@@ -40,7 +40,7 @@ public:
     // POST /api/files/mkdir
     QPair<int, QByteArray> handleMkDir(const QString &authHeader, const QByteArray &body);
 
-    QPair<int, QByteArray> handleDelete(const QString &authHeader, QString filePath);
+    QPair<int, QByteArray> handleDelete(const QString &authHeader, qint64 fileId);
 
     QPair<int, QByteArray> handleRenameFile(const QString &authHeader, const QString &filePath, const QByteArray &body);
 
