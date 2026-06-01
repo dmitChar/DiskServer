@@ -19,6 +19,58 @@ QString FileHandler::diskPath(qint64 userId, const QString &relativePath) const
     return m_storageRoot + "/" + QString::number(userId) + "/" + relativePath;
 }
 
+static HttpResponse buildStreamResponse(const FileData &data, const QString &rangeHeader)
+{
+    HttpResponse resp;
+    const qint64 fileSize = QFileInfo(data.serverPath).size();
+
+    // -- Загловки общие для 200 и 206 ---
+    resp.setContentType(data.mimeType);
+    resp.setHeader("Content-Disposition", "attachment; filename=\"" + data.name + "\"");
+    resp.setHeader("Access-Control-Allow-Origin",  "*");
+    resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Range");
+
+    // Поддержка Range
+    resp.setHeader("Accept-Ranges", "bytes");
+    resp.streaming = true;
+
+    if (!data.checkSum.isEmpty())
+        resp.setHeader("ETag", "\"" + data.checkSum + "\"");
+
+    // Разбор Range
+    auto rangeOpt = Response::parseRange(rangeHeader);
+    if (!rangeOpt)
+    {
+        // Полный файл
+        resp.statusCode = Response::HTTP_OK;
+        resp.streamInfo = StreamingInfo(data.serverPath, 0, fileSize, fileSize, false, false);
+        qDebug() << "[FileHandler] Stream full file" << data.name << fileSize << "bytes";
+        return resp;
+    }
+
+    // --- Range запрос ----
+    Response::RangeRequest range = rangeOpt.value();
+    if (!range.resolve(fileSize))
+    {
+        resp.statusCode = Response::HTTP_RANGE_NOT_SATISFIABLE;
+        resp.setJson();
+        resp.setHeader("Content-Range", QString("bytes */%1").arg(fileSize));
+        resp.body = Response::error(416, "Range Not Satisfiable");
+        resp.streamInfo = StreamingInfo(data.serverPath, range.first, range.length(), fileSize, true, false);
+        return resp;
+    }
+
+    // 206 - Отправляем кусок с известным Content-Length
+    // Transfer-Encoding и Content-Length взаимоисключающие
+    resp.statusCode = Response::HTTP_PARRIAL_CONTENT;
+    resp.streaming = true;
+    resp.streamInfo = StreamingInfo(data.serverPath, range.first, range.length(), fileSize, true, false);
+
+    qDebug() << "[FileHandler] Range" << range.first << "-" << range.last << "of" << fileSize << "for" << data.name;
+    return resp;
+
+}
+
 
 // ─── Внутренний хелпер: выполнить чтение файла с учётом Range ────────────────
 //
@@ -32,67 +84,55 @@ QString FileHandler::diskPath(qint64 userId, const QString &relativePath) const
 // Возвращает {httpStatusCode, body}.
 // body — либо весь файл (200), либо запрошенный фрагмент (206).
 //
-static QPair<int, QByteArray> serveFile(const FileData &fileData, const QString &rangeHeader, QString &outMime,
-                                        QString &outFilename, QMap<QString, QString> outHeaders)
+static QPair<int, QByteArray> serveFile(const FileData &meta, const QString &rangeHeader, QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders)
 {
-    outMime = fileData.mimeType;
-    outFilename = fileData.name;
+    outMime = meta.mimeType;
+    outFileName = meta.name;
 
-    outHeaders["Accept-Ranger"] = "bytes";
-    QFile file(fileData.serverPath);
-    if (!file.open(QIODevice::ReadOnly))
-    {
+    // Сообщаем клиенту, что сервер поддерживает Range
+    outHeaders["Accept-Ranges"] = "bytes";
+
+    QFile f(meta.serverPath);
+    if (!f.open(QIODevice::ReadOnly))
         return {Response::HTTP_SERVER_ERR, Response::error(500, "Failed to open file for reading")};
-    }
 
-    const qint64 fileSize = file.size();
+    const qint64 fileSize = f.size();
 
-    // Разбор Ranges заголовка
+    // Разбор Range заголовка
     auto rangeOpt = Response::parseRange(rangeHeader);
-
-    if (!rangeOpt.has_value())
+    if (!rangeOpt)
     {
-        // if (fileData.mimeType.startsWith("video/"))
-        //     return {Response::HTTP_PARTIAL_CONTENT, {}};
-
-        // Нет Range заголовка - полный файл
-        return {Response::HTTP_OK, file.readAll()};
+        outHeaders["Content-Length"] = QString::number(fileSize);
+        //        if (meta.mimeType.startsWith("video/"))
+        //            return { Response::HTTP_OK, {} };
+        return {Response::HTTP_OK, f.readAll()};
     }
 
     Response::RangeRequest range = rangeOpt.value();
     if (!range.resolve(fileSize))
     {
-        // Диапазон за пределами файла → 416 Range Not Satisfiable
+        // Диапазон за пределами файла -> 416
         outHeaders["Content-Range"] = QString("bytes */%1").arg(fileSize);
         return {Response::HTTP_RANGE_NOT_SATISFIABLE, Response::error(416, "Range Not Satisfiable")};
     }
 
     // Чтение запрошенного фрагмента
-    if (!file.seek(range.first))
-    {
+    if (!f.seek(range.first))
         return {Response::HTTP_SERVER_ERR, Response::error(500, "Seek failed")};
-    }
 
-    QByteArray chunk = file.read(range.length());
+    QByteArray chunk = f.read(range.length());
     if (chunk.size() != range.length())
-    {
-        // Файл мог усечься между открытием и чтением
-        return {Response::HTTP_SERVER_ERR, Response::error(500, "Read returned fewer bytes than expected")};
-    }
+        return {Response::HTTP_SERVER_ERR, Response::error(500, "Read ruined")};
 
-    // ── Заголовки для 206 Partial Content ─────────────────────────────────────
-    // Content-Range: bytes <first>-<last>/<total>
-    outHeaders["Content-Range"]  = range.contentRangeHeader(fileSize);
-    // Content-Length: размер именно этого фрагмента
+    // Заголовки 206
+    outHeaders["Content-Range"] = range.contentRangeHeader(fileSize);
     outHeaders["Content-Length"] = QString::number(chunk.size());
 
-    qDebug() << "[Range] Serving bytes"
+    qDebug() << "[RANGE] Serving bytes"
              << range.first << "-" << range.last
              << "of" << fileSize
-             << "for" << fileData.name;
-
-    return {Response::HTTP_PARTIAL_CONTENT, chunk};
-
+             << "for" << meta.name;
+    return {Response::HTTP_PARRIAL_CONTENT, chunk};
 }
 
 // Обновление квоты пользователя в бд
@@ -280,8 +320,6 @@ QPair<int, QByteArray> FileHandler::handleRenameFile(const QString &authHeader, 
         return {Response::HTTP_SERVER_ERR, Response::error(500, "Error in changing file's name")};
 }
 
-
-
 //--------- Загрузка файлов на сервер ----------------
 
 QPair<int, QByteArray> FileHandler::handleUpload(const QString &authHeader, const QString &targetDir, const QByteArray &body, const QString &contentType)
@@ -409,6 +447,61 @@ QPair<int, QByteArray>FileHandler::handleDownload(const QString &authHeader, qin
     return serveFile(file.value(), rangeHeader, outMime, outFileName, outHeaders);
 }
 
+HttpResponse FileHandler::handleDownloadStream(const HttpRequest &req, qint64 fileId)
+{
+    HttpResponse error;
+    auto token = m_auth->authencticate(req.getHeaderData("authorization"));
+    if (!token)
+    {
+        error.statusCode = Response::HTTP_UNAUTH;
+        error.setJson();
+        error.body = Response::error(401, "Unauthorized");
+        return error;
+    }
+
+    auto fileOpt = m_db->getFileById(fileId);
+
+    if (!fileOpt)
+    {
+        error.statusCode = Response::HTTP_NOT_FOUND;
+        error.setJson();
+        error.body = Response::error(404, "File Not Found");
+        return error;
+    }
+    auto file = fileOpt.value();
+    if (file.isDirectory())
+    {
+        error.statusCode = Response::HTTP_BAD_REQ;
+        error.setJson();
+        error.body = Response::error(400, "Cannot download a directory");
+        return error;
+    }
+    return buildStreamResponse(file, req.getHeaderData("range"));
+}
+
+QPair<int, QByteArray> FileHandler::handleDownloadByPath(const QString &authHeader, const QString &filePath, const QString &rangeHeader, QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders)
+{
+    // auto token = m_auth->authencticate(authHeader);
+    // if (!token)
+    //     return { Response::HTTP_UNAUTH, Response::error(401, "Unauthorized") };
+
+    auto fileOpt = m_db->getFileByPath(diskPath(1, filePath));
+    if (!fileOpt)
+    {
+        return { Response::HTTP_NOT_FOUND, Response::error(404, "File not found")};
+    }
+    FileData file = fileOpt.value();
+    if (file.isDirectory())
+        return { Response::HTTP_BAD_REQ, Response::error(400, "Cannot download a directory")};
+
+    if (rangeHeader.isEmpty())
+    {
+        file.lastAccessed = QDateTime::currentDateTime();
+        m_db->updateFile(file);
+    }
+
+    return serveFile(file, rangeHeader, outMime, outFileName, outHeaders);
+}
 
 /**
  * @brief FileHandler::parseMultipart

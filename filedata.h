@@ -36,7 +36,7 @@ struct FileData
         obj["type"]         = isDirectory() ? "directory" : "file";
         obj["sizeBytes"]    = sizeBytes;
         obj["mimeType"]     = mimeType;
-        obj["checksum"]     = checksum;
+        obj["checksum"]     = checkSum;
         obj["isShared"]     = isShared;
         if (isShared) obj["shareToken"] = shareToken;
         obj["createdAt"]    = createdAt.toString(Qt::ISODate);

@@ -449,7 +449,7 @@ bool DatabaseManager::updateFile(const FileData &file)
 optional<FileData> DatabaseManager::getFileByPath(const QString &path)
 {
     QSqlQuery q(m_db);
-    q.prepare("SELECT * FROM files WHERE path = :path");
+    q.prepare("SELECT * FROM files WHERE storage_path = :path");
     q.bindValue(":path", path);
 
     if (!q.exec() || !q.next())

@@ -10,6 +10,12 @@
 #include "handlers/filehandler.h"
 #include "handlers/userhandler.h"
 #include "router.h"
+#include "utils/ChunkResponseWriter.h"
+#include "Streaming/ChunkStreamingStrategy.h"
+#include "Streaming/StreamingStrategy.h"
+#include "Streaming/RangeStreamingStrategy.h"
+#include "Streaming/FullStreamingStrategy.h"
+#include "Streaming/StreamingContext.h"
 
 class HttpsServer : public QObject
 {
@@ -27,6 +33,7 @@ private:
     HttpRequest parseRequest(const QByteArray &rawData);
     void sendResponse(QTcpSocket *socket, const HttpResponse &resp);
     QString statusText(int code);
+    void sendStreamingResponse(QTcpSocket *socket, const HttpResponse &resp);
 
 private:
     DatabaseManager *m_db;
@@ -37,12 +44,19 @@ private:
     AuthHandler *m_authHandler = nullptr;
     FileHandler *m_fileHandler = nullptr;
     UserHandler *m_userHandler = nullptr;
+    StreamingContext m_streamingContext;
 
 private slots:
     void onReadyRead();
     void onNewConnection();
     void onDisconnected();
 
+};
+
+class CustomTcpServer : public QTcpServer
+{
+protected:
+    void incomingConnection(qintptr) override;
 };
 
 #endif // HTTPSSERVER_H

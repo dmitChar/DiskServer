@@ -5,6 +5,30 @@
 #include <QRegularExpressionMatch>
 #include <QMap>
 
+struct StreamingInfo
+{
+    StreamingInfo() = default;
+
+    StreamingInfo(const QString &path, qint64 offset_, qint64 length_, qint64 fileSize_, bool isRange_, bool useChunk)
+        : filePath(path)
+        , offset(offset_)
+        , length(length_)
+        , fileSize(fileSize_)
+        , isRange(isRange_)
+        , useChunkedTE(useChunk)
+    {}
+
+    QString filePath; // Абсолютный путь к файлу на диске
+    qint64 offset = 0; // Начальный байт(для range)
+    qint64 length = -1; // Количество байт для отправки; -1 = до конца
+    qint64 fileSize = 0; // Размер файла (для content-range)
+    bool isRange = false;
+    bool useChunkedTE = true;
+    // Transfer-Encoding: chunked:
+    // true - для полных файлов, Content-Length неизвестен заранее
+    // false - для Range ответов, Content-Length = length
+};
+
 struct HttpRequest
 {
     QString method;                     //Метод - POST, GET, PUT ...
@@ -32,6 +56,11 @@ struct HttpResponse
     QMap<QString, QString> headers;
     QByteArray body;
 
+    // Когда streaming == true -> body игнорируется
+    // HttpServer создает ChunkResponeWriter и передает ему socket + streamInfo
+    bool streaming = false;
+    StreamingInfo streamInfo;
+
     void setJson()
     {
         headers["Content-Type"] = "application/json; charset=utf-8";
@@ -47,7 +76,7 @@ struct HttpResponse
 };
 
 using RouteHandler = std::function<HttpResponse(const HttpRequest &req,
-                                                    const QMap<QString, QString> &params)>;
+                                                const QMap<QString, QString> &params)>;
 
 // Структура для хранения пути
 struct Route
@@ -72,5 +101,8 @@ private:
     QList<Route> m_routes;
 
 };
+
+
+
 
 #endif // ROUTER_H

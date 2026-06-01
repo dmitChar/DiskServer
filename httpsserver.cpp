@@ -1,18 +1,19 @@
 #include "httpsserver.h"
 
 #include <QUrlQuery>
-#include <QTimer>
 
 
 HttpsServer::HttpsServer(QObject *parent)
-    : QObject{parent}, m_tcpServer(new QTcpServer(this))
+    : QObject{parent}
+    , m_tcpServer(new QTcpServer(this))
 {
     connect(m_tcpServer, &QTcpServer::newConnection, this, &HttpsServer::onNewConnection);
 }
 
 bool HttpsServer::start(const QString &host, quint16 port)
 {
-    QHostAddress addr = (host == "0.0.0.0") ? QHostAddress::Any : QHostAddress(host);
+    //QHostAddress addr = (host == "0.0.0.0") ? QHostAddress::Any : QHostAddress(host);
+    QHostAddress addr = QHostAddress::Any;
     if (!m_tcpServer->listen(addr, port))
     {
         qCritical() << "[HTTP Server] Failed to listen:" << m_tcpServer->errorString();
@@ -45,161 +46,162 @@ void HttpsServer::setUpRoutes()
     //----------- Auth -----------
     m_router.addRoute("POST", "/api/auth/register", [this](const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_authHandler->handleRegister(r.body);
-        int statusCode = data.first;
-        QByteArray body = data.second;
+      QPair<int, QByteArray> data = m_authHandler->handleRegister(r.body);
+      int statusCode = data.first;
+      QByteArray body = data.second;
 
-        HttpResponse resp;
-        resp.statusCode = statusCode;
-        resp.setJson();
-        resp.body = body;
-        return resp;
+      HttpResponse resp;
+      resp.statusCode = statusCode;
+      resp.setJson();
+      resp.body = body;
+      return resp;
     });
 
     m_router.addRoute("POST", "/api/auth/login", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_authHandler->handleLogin(r.body);
-        int statusCode = data.first;
-        QByteArray body = data.second;
+      QPair<int, QByteArray> data = m_authHandler->handleLogin(r.body);
+      int statusCode = data.first;
+      QByteArray body = data.second;
 
-        HttpResponse resp;
-        resp.statusCode = statusCode;
-        resp.setJson();
-        resp.body = body;
-        return resp;
+      HttpResponse resp;
+      resp.statusCode = statusCode;
+      resp.setJson();
+      resp.body = body;
+      return resp;
     });
 
     m_router.addRoute("POST", "/api/auth/logout", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_authHandler->handleLogout(r.getHeaderData("authorization"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();
-        resp.body = data.second;
-        return resp;
+      QPair<int, QByteArray> data = m_authHandler->handleLogout(r.getHeaderData("authorization"));
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();
+      resp.body = data.second;
+      return resp;
     });
 
     m_router.addRoute("GET", "/api/auth/me", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_authHandler->handleMe(r.getHeaderData("authorization"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();;
-        resp.body = data.second;
-        return resp;
+      QPair<int, QByteArray> data = m_authHandler->handleMe(r.getHeaderData("authorization"));
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();;
+      resp.body = data.second;
+      return resp;
     });
 
     m_router.addRoute("PUT", "/api/auth/password", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int,QByteArray> data = m_authHandler->handleChangePassword(r.getHeaderData("authorization"), r.body);
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();
-        resp.body = data.second;
-        return resp;
+      QPair<int,QByteArray> data = m_authHandler->handleChangePassword(r.getHeaderData("authorization"), r.body);
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();
+      resp.body = data.second;
+      return resp;
     });
 
 
     //----------- User -----------
     m_router.addRoute("GET", "/api/user/profile", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_userHandler->handleGetProfile(r.getHeaderData("authorization"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();
-        resp.body = data.second;
+      QPair<int, QByteArray> data = m_userHandler->handleGetProfile(r.getHeaderData("authorization"));
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();
+      resp.body = data.second;
 
-        return resp;
+      return resp;
     });
 
     m_router.addRoute("GET", "/api/user/quota", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_userHandler->handleGetQuota(r.getHeaderData("authorization"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();
-        resp.body = data.second;
+      QPair<int, QByteArray> data = m_userHandler->handleGetQuota(r.getHeaderData("authorization"));
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();
+      resp.body = data.second;
 
-        return resp;
+      return resp;
     });
 
     // Обновление профиля
     m_router.addRoute("PUT", "/api/user/profile", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_userHandler->handleUpdateProfile(r.getHeaderData("authorization"), r.body);
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.setJson();
-        resp.body = data.second;
+      QPair<int, QByteArray> data = m_userHandler->handleUpdateProfile(r.getHeaderData("authorization"), r.body);
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.setJson();
+      resp.body = data.second;
 
-        return resp;
+      return resp;
     });
 
     //----------- Files -----------
     // Получение списка файлов в директории ?path=
     m_router.addRoute("GET", "/api/files", [this] (const HttpRequest &r, const QMap<QString, QString>&)
     {
-        QPair<int, QByteArray> data = m_fileHandler->handleList(r.getHeaderData("authorization"), r.getQueryData("path"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.body = data.second;
-        resp.setJson();
-        return resp;
-    });
-
-    // Загрузка файла на сервер по пути ?path=
-    m_router.addRoute("POST", "/api/files/upload", [this] (const HttpRequest &r, const QMap<QString, QString>&)
-    {
-        QPair<int, QByteArray> data = m_fileHandler->handleUpload(r.getHeaderData("authorization"), r.getQueryData("path"), r.body, r.getHeaderData("content-type"));
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.body = data.second;
-        resp.setJson();;
-        return resp;
-    });
-
-    // Получение файлов клиентом с сервера
-    m_router.addRoute("GET", "/api/files/:id/download", [this] (const HttpRequest &r, const QMap<QString, QString>&p)
-    {
-        QString mime, filename;
-        QMap<QString, QString> extraHeaders;
-        QPair<int, QByteArray> data = m_fileHandler->handleDownload(r.getHeaderData("authorization"), p["id"].toLongLong(), r.getHeaderData("range"), mime, filename, extraHeaders);
-
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.body = data.second;
-        if (resp.statusCode == 200 || resp.statusCode == 206)
-        {
-            resp.setContentType(mime);
-            resp.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-            resp.setHeader("Content-Length", QString::number(resp.body.size()));
-        }
-        else
-            resp.setJson();
-
-        qDebug() << "Отправлено на скачивание: " << data.second.size() << "байт";
-
-        return resp;
-    });
-
-    m_router.addRoute("POST", "/api/files/mkdir", [this] (const HttpRequest &r, const QMap<QString, QString>&)
-    {
-        QPair<int, QByteArray> data = m_fileHandler->handleMkDir(r.getHeaderData("authorization"), r.body);
-        HttpResponse resp;
-        resp.statusCode = data.first;
-        resp.body = data.second;
-        resp.setJson();;
-        return resp;
-    });
-
-    m_router.addRoute("DELETE", "/api/files/:id", [this] (const HttpRequest &r, const QMap<QString, QString> p)
-    {
-      QPair<int, QByteArray> data = m_fileHandler->handleDelete(r.getHeaderData("authorization"), p["id"].toLongLong());
+      QPair<int, QByteArray> data = m_fileHandler->handleList(r.getHeaderData("authorization"), r.getQueryData("path"));
       HttpResponse resp;
       resp.statusCode = data.first;
       resp.body = data.second;
       resp.setJson();
       return resp;
+    });
+
+    // Загрузка файла на сервер по пути ?path=
+    m_router.addRoute("POST", "/api/files/upload", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    {
+      QPair<int, QByteArray> data = m_fileHandler->handleUpload(r.getHeaderData("authorization"), r.getQueryData("path"), r.body, r.getHeaderData("content-type"));
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.body = data.second;
+      resp.setJson();;
+      return resp;
+    });
+
+
+    m_router.addRoute("POST", "/api/files/mkdir", [this] (const HttpRequest &r, const QMap<QString, QString>&)
+    {
+      QPair<int, QByteArray> data = m_fileHandler->handleMkDir(r.getHeaderData("authorization"), r.body);
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.body = data.second;
+      resp.setJson();;
+      return resp;
+    });
+
+    m_router.addRoute("DELETE", "/api/files/:id", [this] (const HttpRequest &r, const QMap<QString, QString>params)
+    {
+      QPair<int, QByteArray> data = m_fileHandler->handleDelete(r.getHeaderData("authorization"), params["id"].toLongLong());
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.body = data.second;
+      resp.setJson();
+      return resp;
+    });
+
+    m_router.addRoute("PUT", "/api/files/rename", [this] (const HttpRequest &r, const QMap<QString, QString>)
+    {
+      QPair<int, QByteArray> data = m_fileHandler->handleRenameFile(r.getHeaderData("authorization"), r.getQueryData("path"), r.body);
+      HttpResponse resp;
+      resp.statusCode = data.first;
+      resp.body = data.second;
+      resp.setJson();
+      return resp;
+    });
+
+    // Получение файла клиентом с сервера
+    m_router.addRoute("GET", "/api/files/:id/download", [this] (const HttpRequest &r, const QMap<QString, QString>& params)
+    {
+      qint64 id = params["id"].toLongLong();
+      return m_fileHandler->handleDownloadStream(r, id);
+    });
+
+    //  Стриминг
+    m_router.addRoute("GET", "/api/files/:id/stream", [this] (const HttpRequest &r, const QMap<QString, QString>& params)
+    {
+      qint64 id = params["id"].toLongLong();
+      return m_fileHandler->handleDownloadStream(r, id);
     });
 }
 
@@ -216,7 +218,7 @@ void HttpsServer::processRequest(QTcpSocket *socket, const QByteArray &rawData)
         resp.statusCode = 204;
         resp.setHeader("Access-Control-Allow-Origin",  "*");
         resp.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Range");
         sendResponse(socket, resp);
         return;
     }
@@ -228,14 +230,30 @@ void HttpsServer::processRequest(QTcpSocket *socket, const QByteArray &rawData)
         resp.statusCode = 404;
         resp.setJson();
         resp.body = R"({"success":false,"error":{"code":404,"message":"Route not found"}})";
+        resp.setHeader("Access-Control-Allow-Origin",  "*");
+        resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Range");
+        sendResponse(socket, resp);
+        return;
     }
 
-    // Add CORS headers to every response
-    resp.setHeader("Access-Control-Allow-Origin",  "*");
-    resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    // Добавление CORS ко всем НЕ streaming ответам
+    if (!resp.streaming)
+    {
+        resp.setHeader("Access-Control-Allow-Origin",  "*");
+        resp.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Range");
+        sendResponse(socket, resp);
+    }
+    else
+    {
+        // Streaming -> управление сокетом берет на себя ChunkResponseWriter
+        sendStreamingResponse(socket, resp);
 
-    qDebug() << "[HTTP] processRequest:" << req.method << req.path << "->" << resp.statusCode;
-    sendResponse(socket, resp);
+    }
+
+    //    sendStreamingResponse(socket, resp);
+    qDebug() << "[HTTP] processRequest:" << req.method << req.path << "->" << resp.statusCode << (resp.streaming ? "(Streaming)" : "NOT streaming")
+             << (resp.streamInfo.isRange ? QString("Range:" + QString::number(resp.streamInfo.offset) + "-" +QString::number(resp.streamInfo.offset + resp.streamInfo.length))
+                                         : "Not range");
 }
 
 HttpRequest HttpsServer::parseRequest(const QByteArray &rawData)
@@ -283,24 +301,57 @@ HttpRequest HttpsServer::parseRequest(const QByteArray &rawData)
         int dataStart = line.indexOf(':'); // Позиция в строке после которой начинается значение заголовка, пример: Host: example.com
         if (dataStart > 0)
         {
-            req.headers[line.left(dataStart).trimmed().toLower()] = line.mid(dataStart + 1).trimmed();
+            if (!req.headers.contains(line.left(dataStart).trimmed().toLower()))
+                req.headers[line.left(dataStart).trimmed().toLower()] = line.mid(dataStart + 1).trimmed();
         }
     }
 
     return req;
 }
 
-//----- Response writer -------------
+//----- Response writers -------------
+
+void HttpsServer::sendStreamingResponse(QTcpSocket *socket, const HttpResponse &resp)
+{
+    // Отсоединение слотов от сокета
+    socket->disconnect(this);
+    m_buffers.remove(socket);
+
+    if (resp.streamInfo.isRange)
+    {
+        m_streamingContext.setStrategy(std::make_unique<RangeStreamingStrategy>(this));
+    }
+    else if (!resp.streamInfo.isRange && resp.streamInfo.useChunkedTE)
+    {
+        m_streamingContext.setStrategy(std::make_unique<ChunkStreamingStrategy>(this));
+    }
+    else
+    {
+        m_streamingContext.setStrategy(std::make_unique<FullStreamingStrategy>(this));
+    }
+    m_streamingContext.execute(socket, resp);
+
+
+    // ChunkResponseWriter берет владение через setParent внутри него
+    //    auto *writer = new ChunkResponseWriter(socket, resp, this);
+    //    connect(writer, &ChunkResponseWriter::finished, this, [socket, path = resp.streamInfo.filePath] (bool ok)
+    //    {
+    //        qDebug() << "[Stream] Finished" << path << (ok ? "OK" : "FAILED") << "socket:" << socket;
+    //    });
+    //    if (!writer->start())
+    //    {
+    //        qWarning() << "[HTTP] Streaming start failed for" << resp.streamInfo.filePath;
+    //    }
+}
 
 void HttpsServer::sendResponse(QTcpSocket *socket, const HttpResponse &resp)
 {
     QByteArray raw;
     raw += "HTTP/1.1 " + QString::number(resp.statusCode).toLatin1() + " " + statusText(resp.statusCode).toLatin1() + "\r\n";
-    raw += "Date: " + QDateTime::currentDateTimeUtc().toString("ddd, dd MMM yyyy hh:mm:ss").toLatin1() + " GMT\r\n";
-    raw += "Server: YaDisk-Backend/1.0\r\n";
+    raw += "Date: " + QDateTime::currentDateTime().toString("yyyy-MM-ddThh:mm:ssZ").toLatin1() + " GMT\r\n";
+    raw += "Server: CloudDisk-Backend/1.0\r\n";
     raw += "Content-Length: " + QString::number(resp.body.size()).toLatin1() + "\r\n";
     raw += "Connection: close\r\n";
-    //raw += "Connection: keep-alive\r\n";
 
     for (auto it = resp.headers.constBegin(); it != resp.headers.constEnd(); ++it)
     {
@@ -309,27 +360,21 @@ void HttpsServer::sendResponse(QTcpSocket *socket, const HttpResponse &resp)
     raw += "\r\n";
     raw += resp.body;
 
-    qint64 written =socket->write(raw);
-
-    qDebug() << "[HttpServer] written:" << written << raw.size();
+    qDebug() << "Raw size: " << raw.size();
     socket->write(raw);
     socket->flush();
-
-    QTimer::singleShot(
-        1000,
-        socket,
-        &QTcpSocket::disconnectFromHost);
+    socket->disconnectFromHost();
 }
 
 QString HttpsServer::statusText(int code)
 {
     static const QMap<int,QString> texts =
-    {
-        {200,"OK"},{201,"Created"},{204,"No Content"},
-        {400,"Bad Request"},{401,"Unauthorized"},{403,"Forbidden"},
-        {404,"Not Found"},{405,"Method Not Allowed"},{409,"Conflict"},
-        {413,"Payload Too Large"},{500,"Internal Server Error"}
-    };
+        {
+            {200,"OK"},{201,"Created"},{204,"No Content"},
+            {400,"Bad Request"},{401,"Unauthorized"},{403,"Forbidden"},
+            {404,"Not Found"},{405,"Method Not Allowed"},{409,"Conflict"},
+            {413,"Payload Too Large"},{500,"Internal Server Error"}
+        };
     return texts.value(code, "Unknown");
 }
 
@@ -362,6 +407,8 @@ void HttpsServer::onReadyRead()
     QByteArray requestData = buf.left(totalExpected);
     buf = buf.mid(totalExpected);
 
+    //qDebug() << "Получен запрос" << requestData;
+
     processRequest(socket, requestData);
 }
 
@@ -378,5 +425,5 @@ void HttpsServer::onNewConnection()
 
 void HttpsServer::onDisconnected()
 {
-
+    qDebug() << "[HTTP] Клиент разорвал соединение";
 }

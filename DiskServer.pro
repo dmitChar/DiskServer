@@ -16,7 +16,12 @@ SOURCES += \
     handlers/authhandler.cpp \
     handlers/filehandler.cpp \
     handlers/userhandler.cpp \
-    utils/fileutils.cpp
+    utils/fileutils.cpp \
+    Streaming/FullStreamingStrategy.cpp \
+    Streaming/StreamingStrategy.cpp \
+    Streaming/RangeStreamingStrategy.cpp \
+    Streaming/ChunkStreamingStrategy.cpp \
+    Streaming/StreamingContext.cpp
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -36,7 +41,12 @@ HEADERS += \
     handlers/userhandler.h \
     utils/hashutils.h \
     utils/fileutils.h \
-    utils/filedata.h
+    utils/filedata.h \
+    Streaming/FullStreamingStrategy.h \
+    Streaming/StreamingStrategy.h \
+    Streaming/RangeStreamingStrategy.h \
+    Streaming/ChunkStreamingStrategy.h \
+    Streaming/StreamingContext.h
 
 RESOURCES += \
     resource.qrc

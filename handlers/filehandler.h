@@ -9,6 +9,7 @@
 #include "utils/fileutils.h"
 #include "utils/response.h"
 #include "utils/filedata.h"
+#include "router.h"
 
 struct MultipartFile
 {
@@ -37,12 +38,17 @@ public:
     QPair<int, QByteArray> handleDownload(const QString &authHeader, qint64 fileId, const QString &rangeHeader,
                                           QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders);
 
+    QPair<int, QByteArray> handleDownloadByPath(const QString &authHeader, const QString &filePath, const QString &rangeHeader,
+                                          QString &outMime, QString &outFileName, QMap<QString, QString> &outHeaders);
+
     // POST /api/files/mkdir
     QPair<int, QByteArray> handleMkDir(const QString &authHeader, const QByteArray &body);
 
     QPair<int, QByteArray> handleDelete(const QString &authHeader, qint64 fileId);
 
     QPair<int, QByteArray> handleRenameFile(const QString &authHeader, const QString &filePath, const QByteArray &body);
+
+    HttpResponse handleDownloadStream(const HttpRequest &req, qint64 fileId);
 
 
 private:
